@@ -43,7 +43,7 @@
 
 - sudo cp iotscape.sh /Desktop/adapter
 - cd ~/Desktop/adapter
-- chmod u+x ./iotscape.sh
+- sudo chmod u+x ./iotscape.sh
 
 11. Set up supervisor
 
