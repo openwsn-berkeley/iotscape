@@ -3,19 +3,11 @@ Argus probe for the Beamlogic Site Analyzer Lite
 http://www.beamlogic.com/products/802154-site-analyzer.aspx
 """
 
-# Pythomas
 import time
 import struct
-import socket
 import threading
-import json
 import Queue
 import traceback
-import datetime
-import re
-# third-party
-import winsound
-import serial
 
 #============================ helpers =========================================
 
@@ -51,10 +43,6 @@ class RxSnifferThread(threading.Thread):
     BEAMLOGIC_HEADER_LEN     = 20 # 1+8+1+1+4+4+1
     PIPE_SNIFFER             = r'\\.\pipe\analyzer'
     
-    #FREQUENCY                = 3500
-    #DURATION                 = 50
-    
-
     def __init__(self, wrThread):
 
         # store params
@@ -65,12 +53,8 @@ class RxSnifferThread(threading.Thread):
         self.rxBuffer                  = []
         self.doneReceivingGlobalHeader = False
         self.doneReceivingPacketHeader = False
-        self.line                      = []
+        self.packet                    = []
         
-        self.counter                   = 0
-        #self.serial                    = serial.Serial('COM28',9600)
-                   
-
         # start the thread
         threading.Thread.__init__(self)
         self.name            = 'RxSnifferThread'
@@ -109,17 +93,20 @@ class RxSnifferThread(threading.Thread):
             if   not self.doneReceivingGlobalHeader:
                 if len(self.rxBuffer) == self.PCAP_GLOBALHEADER_LEN:
                     self.doneReceivingGlobalHeader    = True
-                    self.wrThread.outfile.write(''.join([chr(b) for b in self.rxBuffer]))
+
+                    #Send global header
+                    self.wrThread.publishFrame(self.rxBuffer)
                     self.rxBuffer                     = []
 
             # PCAP packet header
             elif not self.doneReceivingPacketHeader:
                 if len(self.rxBuffer) == self.PCAP_PACKETHEADER_LEN:
                     self.doneReceivingPacketHeader    = True
-                    self.line                         = []
                     self.packetHeader                 = self._parsePcapPacketHeader(self.rxBuffer)
                     assert self.packetHeader['incl_len'] == self.packetHeader['orig_len']
-                    self.line                         += self.rxBuffer
+
+                    #Append header to packet
+                    self.packet                       += self.rxBuffer
                     self.rxBuffer                     = []
                     
             # PCAP packet bytes
@@ -128,6 +115,7 @@ class RxSnifferThread(threading.Thread):
                     self.doneReceivingPacketHeader    = False
                     self._newFrame(self.rxBuffer)
                     self.rxBuffer                     = []
+
 
     def _parsePcapPacketHeader(self, header):
         """
@@ -152,72 +140,13 @@ class RxSnifferThread(threading.Thread):
 
         return returnVal
 
-    def float2hex(self, n):
-        
-        if n == 0.0:
-            returnValue = b"\x00\x00\x00\x00"
-            return str(returnValue)
-        
-        returnValue = hex(struct.unpack('<I', struct.pack('<f', n))[0])
-        returnValue = "\\x"+"\\x".join(b for b in re.findall('..',returnValue.split('x')[1])[::-1])  
-        return str(returnValue)
-
-    def getCoord(self, s):
-        while True:  
-            line = s.readline().decode('utf-8')
-            data = line.split(",")
-            
-            if data[0] == "$GPGLL":
-                if data[1]=='':
-                    lat = 0.0
-                    long = 0.0
-                    return lat, long
-
-                lat = data[1]
-                lat = int(lat[:2])+float(lat[2:])/60
-                latDir = data[2]
-                long = data[3]
-                long = int(long[:3])+float(long[3:])/60
-                longDir = data[4]
-
-                if latDir == 'S':
-                    lat = -lat
-
-                if longDir == 'W':
-                    long = -long
-                    
-                time     = data[5].split(".")[0]
-                timeFrance = int(time) + 20000
-                break
-            
-        return lat,long
 
     def _newFrame(self, frame):
         """
         Just received a full frame from the sniffer
         """
-        self.line += frame
-        self.wrThread.publishFrame(self.line)
-        self.counter += 1
-        print ("Frames : ", self.counter)
-
-
-
-
-        
-        #Add GPS coordinates
-        #lat, long = self.getCoord(self.serial)
-        #lat = self.float2hex(lat)
-        #long = self.float2hex(long)
-        
-        #frame1 = ''.join([chr(b) for b in self.line[:27]])
-        #frame2 = ''.join([chr(b) for b in self.line[35:]])
-        #f = '\xd7\x63\x43\x42'        
-        #self.outfile.write(frame1+str(lat)+str(long)+frame2)
-        #self.counter                      += 1
-        #winsound.Beep(self.FREQUENCY, self.DURATION)
-        #print ("Frames : ", self.counter)
-
+        self.packet += frame
+        self.wrThread.publishFrame(self.packet)
 
 class WrThread(threading.Thread):
 
@@ -238,17 +167,17 @@ class WrThread(threading.Thread):
         try:
             while True:
                 # wait for first frame
-                frames = [self.wrQueue.get(), ]
+                data = [self.wrQueue.get(), ]
 
-                # get other frames (if any)
+                # get other packets (if any)
                 try:
                     while True:
-                        frames += [self.wrQueue.get(block=False)]
+                        data += [self.wrQueue.get(block=False)]
                 except Queue.Empty:
                     # write data
-                    for f in frames:
-                        frame = ''.join([chr(b) for b in f])
-                        self.outfile.write(frame)
+                    for f in data:
+                        packet = ''.join([chr(b) for b in f])
+                        self.outfile.write(packet)
                     pass
                 time.sleep(5)
                 
