@@ -1,8 +1,3 @@
-"""
-Argus probe for the Beamlogic Site Analyzer Lite
-http://www.beamlogic.com/products/802154-site-analyzer.aspx
-"""
-
 import time
 import struct
 import threading
@@ -46,7 +41,7 @@ class RxSnifferThread(threading.Thread):
     def __init__(self, wrThread):
 
         # store params
-        self.wrThread                  = wrThread
+        self.writingThread             = writingThread
 
         # local variables
         self.dataLock                  = threading.Lock()
@@ -57,7 +52,7 @@ class RxSnifferThread(threading.Thread):
         
         # start the thread
         threading.Thread.__init__(self)
-        self.name            = 'RxSnifferThread'
+        self.name                      = 'RxSnifferThread'
         self.start()
 
     def run(self):
@@ -94,8 +89,8 @@ class RxSnifferThread(threading.Thread):
                 if len(self.rxBuffer) == self.PCAP_GLOBALHEADER_LEN:
                     self.doneReceivingGlobalHeader    = True
 
-                    #Send global header
-                    self.wrThread.publishFrame(self.rxBuffer)
+                    # send global header
+                    self.writingThread.publishFrame(self.rxBuffer)
                     self.rxBuffer                     = []
 
             # PCAP packet header
@@ -105,7 +100,7 @@ class RxSnifferThread(threading.Thread):
                     self.packetHeader                 = self._parsePcapPacketHeader(self.rxBuffer)
                     assert self.packetHeader['incl_len'] == self.packetHeader['orig_len']
 
-                    #Append header to packet
+                    # append header to packet
                     self.packet                       += self.rxBuffer
                     self.rxBuffer                     = []
                     
@@ -140,7 +135,6 @@ class RxSnifferThread(threading.Thread):
 
         return returnVal
 
-
     def _newFrame(self, frame):
         """
         Just received a full frame from the sniffer
@@ -148,19 +142,19 @@ class RxSnifferThread(threading.Thread):
         self.packet += frame
         self.wrThread.publishFrame(self.packet)
 
-class WrThread(threading.Thread):
+class WritingThread(threading.Thread):
 
-    OUTPUT                   = 'beamlogic'+time.strftime('%Y%m%d-%Hh%Mm%Ss')+'.pcap'
+    FILENAME_OUTPUT          = 'beamlogic_{0}.pcap'.format(time.strftime('%Y%m%d-%Hh%Mm%Ss'))
 
     def __init__(self):
 
         # local variables
         self.wrQueue         = Queue.Queue(maxsize=100)
-        self.outfile         = open(self.OUTPUT,'wb')
+        self.outfile         = open(self.FILENAME_OUTPUT,'wb')
         
         # start the thread
         threading.Thread.__init__(self)
-        self.name            = 'WrThread'
+        self.name            = 'WritingThread'
         self.start()
 
     def run(self):
@@ -204,7 +198,7 @@ class WrThread(threading.Thread):
 
 def main():    
     # start thread
-    wrThread            = WrThread()
-    rxSnifferThread     = RxSnifferThread(wrThread)
+    writingThread            = WritingThread()
+    rxSnifferThread     = RxSnifferThread(writingThread)
 if __name__ == "__main__":
     main()
