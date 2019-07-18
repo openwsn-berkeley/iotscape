@@ -199,6 +199,6 @@ class WritingThread(threading.Thread):
 def main():    
     # start thread
     writingThread            = WritingThread()
-    rxSnifferThread     = RxSnifferThread(writingThread)
+    rxSnifferThread          = RxSnifferThread(writingThread)
 if __name__ == "__main__":
     main()
