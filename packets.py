@@ -1,8 +1,11 @@
+# Python
 import time
 import struct
 import threading
 import Queue
 import traceback
+# third-party
+import winsound
 
 #============================ helpers =========================================
 
@@ -27,21 +30,22 @@ def logCrash(threadName, err):
 
 #============================ classes =========================================
 
-
 class RxSnifferThread(threading.Thread):
     """
     Thread which attaches to the sniffer and parses incoming frames.
     """
-
+    
+    OFFSET_RSSI              = 10
     PCAP_GLOBALHEADER_LEN    = 24 # 4+2+2+4+4+4+4
     PCAP_PACKETHEADER_LEN    = 16 # 4+4+4+4
     BEAMLOGIC_HEADER_LEN     = 20 # 1+8+1+1+4+4+1
     PIPE_SNIFFER             = r'\\.\pipe\analyzer'
     
-    def __init__(self, wrThread):
+    def __init__(self, writingThread, beepingThread):
 
         # store params
         self.writingThread             = writingThread
+        self.beepingThread             = beepingThread
 
         # local variables
         self.dataLock                  = threading.Lock()
@@ -101,7 +105,7 @@ class RxSnifferThread(threading.Thread):
                     assert self.packetHeader['incl_len'] == self.packetHeader['orig_len']
 
                     # append header to packet
-                    self.packet                       += self.rxBuffer
+                    self.packet                       = self.rxBuffer
                     self.rxBuffer                     = []
                     
             # PCAP packet bytes
@@ -140,11 +144,12 @@ class RxSnifferThread(threading.Thread):
         Just received a full frame from the sniffer
         """
         self.packet += frame
-        self.wrThread.publishFrame(self.packet)
+        self.writingThread.publishFrame(self.packet)
+        self.beepingThread.beep(frame[self.OFFSET_RSSI])
 
 class WritingThread(threading.Thread):
 
-    FILENAME_OUTPUT          = 'beamlogic_{0}.pcap'.format(time.strftime('%Y%m%d-%Hh%Mm%Ss'))
+    FILENAME_OUTPUT          = '{0}_packets.pcap'.format(time.strftime('%Y%m%d-%Hh%Mm%Ss'))
 
     def __init__(self):
 
@@ -185,13 +190,52 @@ class WritingThread(threading.Thread):
         try:
             self.wrQueue.put(frame, block=False)
         except Queue.Full:
-            print "WARNING queue full. Dropping frame."
+            print "WARNING WritingThread queue full. Dropping frame."
 
     #======================== private =========================================
-    
 
-    
+
+class BeepingThread(threading.Thread):
+
+    FREQ_MIN = 440
+    FREQ_MAX = 880
+    MAX_RSSI =  30
+
+    def __init__(self):
+
+        # local variables
+        self.queue           = Queue.Queue(maxsize=100)
+        
+        # start the thread
+        threading.Thread.__init__(self)
+        self.name            = 'BeepingThread'
+        self.start()
+
+    def run(self):
+        try:
+            while True:
+                # wait for first frame
+                rssi = self.queue.get()
+
+                # compute frequency
+                freq = int(self.FREQ_MIN+(float(self.FREQ_MAX-self.FREQ_MIN)*float(float(rssi)/float(self.MAX_RSSI))))
                 
+                # beep
+                winsound.Beep(freq,50)
+                
+        except Exception as err:
+            logCrash(self.name, err)
+
+    #======================== public ==========================================
+
+    def beep(self, rssi):
+
+        try:
+            self.queue.put(rssi)
+        except Queue.Full:
+            print "WARNING BeepingThread queue full. Skipping beep."
+
+    #======================== private =========================================
 
 #============================ main ============================================
 
@@ -199,6 +243,7 @@ class WritingThread(threading.Thread):
 def main():    
     # start thread
     writingThread            = WritingThread()
-    rxSnifferThread          = RxSnifferThread(writingThread)
+    beepingThread            = BeepingThread()
+    rxSnifferThread          = RxSnifferThread(writingThread,beepingThread)
 if __name__ == "__main__":
     main()

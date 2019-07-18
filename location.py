@@ -1,6 +1,6 @@
 import serial
 
-FILENAME_OUTPUT = 'gpsData.txt'
+FILENAME_OUTPUT = '{0}_location.log'.format(time.strftime('%Y%m%d-%Hh%Mm%Ss'))
 PORT            = 'COM28'
 
 with open(FILENAME_OUTPUT, "a") as outfile:
