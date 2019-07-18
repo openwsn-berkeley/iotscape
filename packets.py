@@ -1,8 +1,11 @@
+# Python
 import time
 import struct
 import threading
 import Queue
 import traceback
+# third-party
+import winsound
 
 #============================ helpers =========================================
 
@@ -27,7 +30,6 @@ def logCrash(threadName, err):
 
 #============================ classes =========================================
 
-
 class RxSnifferThread(threading.Thread):
     """
     Thread which attaches to the sniffer and parses incoming frames.
@@ -38,10 +40,11 @@ class RxSnifferThread(threading.Thread):
     BEAMLOGIC_HEADER_LEN     = 20 # 1+8+1+1+4+4+1
     PIPE_SNIFFER             = r'\\.\pipe\analyzer'
     
-    def __init__(self, wrThread):
+    def __init__(self, writingThread, beepingThread):
 
         # store params
         self.writingThread             = writingThread
+        self.beepingThread             = beepingThread
 
         # local variables
         self.dataLock                  = threading.Lock()
@@ -140,7 +143,8 @@ class RxSnifferThread(threading.Thread):
         Just received a full frame from the sniffer
         """
         self.packet += frame
-        self.wrThread.publishFrame(self.packet)
+        self.writingThread.publishFrame(self.packet)
+        self.beepingThread.beep('poipoipoi')
 
 class WritingThread(threading.Thread):
 
@@ -185,13 +189,45 @@ class WritingThread(threading.Thread):
         try:
             self.wrQueue.put(frame, block=False)
         except Queue.Full:
-            print "WARNING queue full. Dropping frame."
+            print "WARNING WritingThread queue full. Dropping frame."
 
     #======================== private =========================================
-    
 
-    
+
+class BeepingThread(threading.Thread):
+
+    def __init__(self):
+
+        # local variables
+        self.queue           = Queue.Queue(maxsize=100)
+        
+        # start the thread
+        threading.Thread.__init__(self)
+        self.name            = 'BeepingThread'
+        self.start()
+
+    def run(self):
+        try:
+            while True:
+                # wait for first frame
+                rssi = self.queue.get()
+
+                # beep
+                winsound.Beep(440,50)
                 
+        except Exception as err:
+            logCrash(self.name, err)
+
+    #======================== public ==========================================
+
+    def beep(self, rssi):
+
+        try:
+            self.queue.put(rssi)
+        except Queue.Full:
+            print "WARNING BeepingThread queue full. Skipping beep."
+
+    #======================== private =========================================
 
 #============================ main ============================================
 
@@ -199,6 +235,7 @@ class WritingThread(threading.Thread):
 def main():    
     # start thread
     writingThread            = WritingThread()
-    rxSnifferThread          = RxSnifferThread(writingThread)
+    beepingThread            = BeepingThread()
+    rxSnifferThread          = RxSnifferThread(writingThread,beepingThread)
 if __name__ == "__main__":
     main()
