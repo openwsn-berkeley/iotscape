@@ -3,24 +3,24 @@ Argus probe for the Beamlogic Site Analyzer Lite
 http://www.beamlogic.com/products/802154-site-analyzer.aspx
 """
 
+# Pythomas
 import time
 import struct
 import socket
 import threading
 import json
+import Queue
 import traceback
 import datetime
-import winsound
 import re
+# third-party
+import winsound
 import serial
-#import ArgusVersion
 
 #============================ helpers =========================================
 
-
 def currentUtcTime():
     return time.strftime("%a, %d %b %Y %H:%M:%S UTC", time.gmtime())
-
 
 def logCrash(threadName, err):
     output  = []
@@ -50,12 +50,15 @@ class RxSnifferThread(threading.Thread):
     PCAP_PACKETHEADER_LEN    = 16 # 4+4+4+4
     BEAMLOGIC_HEADER_LEN     = 20 # 1+8+1+1+4+4+1
     PIPE_SNIFFER             = r'\\.\pipe\analyzer'
-    OUTPUT                   = 'beamlogic'+time.strftime('%Y%m%d-%Hh%Mm%Ss')+'.pcap'
-    FREQUENCY                = 3500
-    DURATION                 = 50
+    
+    #FREQUENCY                = 3500
+    #DURATION                 = 50
     
 
-    def __init__(self):
+    def __init__(self, wrThread):
+
+        # store params
+        self.wrThread                  = wrThread
 
         # local variables
         self.dataLock                  = threading.Lock()
@@ -63,9 +66,9 @@ class RxSnifferThread(threading.Thread):
         self.doneReceivingGlobalHeader = False
         self.doneReceivingPacketHeader = False
         self.line                      = []
-        self.outfile                   = open(self.OUTPUT,'wb')
+        
         self.counter                   = 0
-        self.serial                    = serial.Serial('COM28',9600)
+        #self.serial                    = serial.Serial('COM28',9600)
                    
 
         # start the thread
@@ -106,7 +109,7 @@ class RxSnifferThread(threading.Thread):
             if   not self.doneReceivingGlobalHeader:
                 if len(self.rxBuffer) == self.PCAP_GLOBALHEADER_LEN:
                     self.doneReceivingGlobalHeader    = True
-                    self.outfile.write(''.join([chr(b) for b in self.rxBuffer]))
+                    self.wrThread.outfile.write(''.join([chr(b) for b in self.rxBuffer]))
                     self.rxBuffer                     = []
 
             # PCAP packet header
@@ -117,7 +120,6 @@ class RxSnifferThread(threading.Thread):
                     self.packetHeader                 = self._parsePcapPacketHeader(self.rxBuffer)
                     assert self.packetHeader['incl_len'] == self.packetHeader['orig_len']
                     self.line                         += self.rxBuffer
-                    #self.line                         += [b for b in self.rxBuffer]
                     self.rxBuffer                     = []
                     
             # PCAP packet bytes
@@ -195,19 +197,74 @@ class RxSnifferThread(threading.Thread):
         Just received a full frame from the sniffer
         """
         self.line += frame
-        #Add GPS coordinates
-        lat, long = self.getCoord(self.serial)
-        lat = self.float2hex(lat)
-        long = self.float2hex(long)
-        
-        frame1 = ''.join([chr(b) for b in self.line[:27]])
-        frame2 = ''.join([chr(b) for b in self.line[35:]])
-        f = '\xd7\x63\x43\x42'        
-        self.outfile.write(frame1+str(lat)+str(long)+frame2)
-        self.counter                      += 1
-        winsound.Beep(self.FREQUENCY, self.DURATION)
+        self.wrThread.publishFrame(self.line)
+        self.counter += 1
         print ("Frames : ", self.counter)
 
+
+
+
+        
+        #Add GPS coordinates
+        #lat, long = self.getCoord(self.serial)
+        #lat = self.float2hex(lat)
+        #long = self.float2hex(long)
+        
+        #frame1 = ''.join([chr(b) for b in self.line[:27]])
+        #frame2 = ''.join([chr(b) for b in self.line[35:]])
+        #f = '\xd7\x63\x43\x42'        
+        #self.outfile.write(frame1+str(lat)+str(long)+frame2)
+        #self.counter                      += 1
+        #winsound.Beep(self.FREQUENCY, self.DURATION)
+        #print ("Frames : ", self.counter)
+
+
+class WrThread(threading.Thread):
+
+    OUTPUT                   = 'beamlogic'+time.strftime('%Y%m%d-%Hh%Mm%Ss')+'.pcap'
+
+    def __init__(self):
+
+        # local variables
+        self.wrQueue         = Queue.Queue(maxsize=100)
+        self.outfile         = open(self.OUTPUT,'wb')
+        
+        # start the thread
+        threading.Thread.__init__(self)
+        self.name            = 'WrThread'
+        self.start()
+
+    def run(self):
+        try:
+            while True:
+                # wait for first frame
+                frames = [self.wrQueue.get(), ]
+
+                # get other frames (if any)
+                try:
+                    while True:
+                        frames += [self.wrQueue.get(block=False)]
+                except Queue.Empty:
+                    # write data
+                    for f in frames:
+                        frame = ''.join([chr(b) for b in f])
+                        self.outfile.write(frame)
+                    pass
+                time.sleep(5)
+                
+        except Exception as err:
+            logCrash(self.name, err)
+
+    #======================== public ==========================================
+
+    def publishFrame(self, frame):
+
+        try:
+            self.wrQueue.put(frame, block=False)
+        except Queue.Full:
+            print "WARNING queue full. Dropping frame."
+
+    #======================== private =========================================
     
 
     
@@ -218,6 +275,7 @@ class RxSnifferThread(threading.Thread):
 
 def main():    
     # start thread
-    rxSnifferThread     = RxSnifferThread()
+    wrThread            = WrThread()
+    rxSnifferThread     = RxSnifferThread(wrThread)
 if __name__ == "__main__":
     main()
