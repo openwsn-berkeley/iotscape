@@ -1,6 +1,6 @@
 import serial
 
-FILENAME_OUTPUT = 'gpsData.txt'
+FILENAME_OUTPUT = 'position.log'
 PORT            = 'COM28'
 
 with open(FILENAME_OUTPUT, "a") as outfile:
