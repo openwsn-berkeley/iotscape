@@ -144,7 +144,7 @@ class RxSnifferThread(threading.Thread):
 
 class WritingThread(threading.Thread):
 
-    FILENAME_OUTPUT          = 'packets_{0}.pcap'.format(time.strftime('%Y%m%d-%Hh%Mm%Ss'))
+    FILENAME_OUTPUT          = '{0}_packets.pcap'.format(time.strftime('%Y%m%d-%Hh%Mm%Ss'))
 
     def __init__(self):
 
