@@ -34,7 +34,8 @@ class RxSnifferThread(threading.Thread):
     """
     Thread which attaches to the sniffer and parses incoming frames.
     """
-
+    
+    OFFSET_RSSI              = 10
     PCAP_GLOBALHEADER_LEN    = 24 # 4+2+2+4+4+4+4
     PCAP_PACKETHEADER_LEN    = 16 # 4+4+4+4
     BEAMLOGIC_HEADER_LEN     = 20 # 1+8+1+1+4+4+1
@@ -104,7 +105,7 @@ class RxSnifferThread(threading.Thread):
                     assert self.packetHeader['incl_len'] == self.packetHeader['orig_len']
 
                     # append header to packet
-                    self.packet                       += self.rxBuffer
+                    self.packet                       = self.rxBuffer
                     self.rxBuffer                     = []
                     
             # PCAP packet bytes
@@ -144,7 +145,7 @@ class RxSnifferThread(threading.Thread):
         """
         self.packet += frame
         self.writingThread.publishFrame(self.packet)
-        self.beepingThread.beep('poipoipoi')
+        self.beepingThread.beep(frame[self.OFFSET_RSSI])
 
 class WritingThread(threading.Thread):
 
@@ -196,6 +197,10 @@ class WritingThread(threading.Thread):
 
 class BeepingThread(threading.Thread):
 
+    FREQ_MIN = 440
+    FREQ_MAX = 880
+    MAX_RSSI =  30
+
     def __init__(self):
 
         # local variables
@@ -212,8 +217,11 @@ class BeepingThread(threading.Thread):
                 # wait for first frame
                 rssi = self.queue.get()
 
+                # compute frequency
+                freq = int(self.FREQ_MIN+(float(self.FREQ_MAX-self.FREQ_MIN)*float(float(rssi)/float(self.MAX_RSSI))))
+                
                 # beep
-                winsound.Beep(440,50)
+                winsound.Beep(freq,50)
                 
         except Exception as err:
             logCrash(self.name, err)
