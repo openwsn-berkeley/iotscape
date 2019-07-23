@@ -1,4 +1,5 @@
 import serial
+import time
 
 FILENAME_OUTPUT = '{0}_location.log'.format(time.strftime('%Y%m%d-%Hh%Mm%Ss'))
 PORT            = 'COM28'
