@@ -36,6 +36,7 @@ class RxSnifferThread(threading.Thread):
     """
     
     OFFSET_RSSI              = 10
+    OFFSET_SOURCE            = 32
     PCAP_GLOBALHEADER_LEN    = 24 # 4+2+2+4+4+4+4
     PCAP_PACKETHEADER_LEN    = 16 # 4+4+4+4
     BEAMLOGIC_HEADER_LEN     = 20 # 1+8+1+1+4+4+1
@@ -53,6 +54,7 @@ class RxSnifferThread(threading.Thread):
         self.doneReceivingGlobalHeader = False
         self.doneReceivingPacketHeader = False
         self.packet                    = []
+        self.cont                      = 0
         
         # start the thread
         threading.Thread.__init__(self)
@@ -145,8 +147,16 @@ class RxSnifferThread(threading.Thread):
         """
         self.packet += frame
         self.writingThread.publishFrame(self.packet)
-        self.beepingThread.beep(frame[self.OFFSET_RSSI])
+        
+        if frame[self.OFFSET_SOURCE:self.OFFSET_SOURCE+2] == [157, 157]:
+            self.cont +=1
+            if self.cont == 150:
+                self.cont = 0
+                winsound.Beep(2000,100)
 
+        else: 
+            self.beepingThread.beep(frame[self.OFFSET_RSSI])
+            
 class WritingThread(threading.Thread):
 
     FILENAME_OUTPUT          = '{0}_packets.pcap'.format(time.strftime('%Y%m%d-%Hh%Mm%Ss'))
@@ -178,7 +188,6 @@ class WritingThread(threading.Thread):
                         packet = ''.join([chr(b) for b in f])
                         self.outfile.write(packet)
                     pass
-                time.sleep(5)
                 
         except Exception as err:
             logCrash(self.name, err)
