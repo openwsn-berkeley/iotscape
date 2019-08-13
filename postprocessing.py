@@ -40,12 +40,11 @@ class GpsLog():
                         # timestamp
                         ts_string      = int(nowDate+nowTime.split('.')[0])
                         ts_string      = '{0} GMT'.format(ts_string)
-                        timestamp      = int(time.mktime(time.strptime(ts_string, '%y%m%d%H%M%S %Z'))+3600)
-                        
+                        timestamp      = int(time.mktime(time.strptime(ts_string, '%d%m%y%H%M%S %Z'))+3600)
                         
                         # location
                         location       =  self._computeLatLon(lat,lat_heading,lon,lon_heading)
-                        
+
                         # store
                         self.gpsData  += [(timestamp,location)]
 
@@ -77,7 +76,10 @@ class PcapLog(object):
     BEAMLOGIC_HEADER_LEN               = 20 # 1+8+1+1+4+4+1
     PCAP_FILES_PATH                    = 'C:\Users\clopezlo\Desktop\iotscapeData' 
     FILENAME_OUTPUT                    = 'processed_packets.pcap'
-    EXTRACT_MY_BEACON                  = ''.join([chr(b) for b in [157]*19])
+    EXTRACT_MY_BEACON_DESTINATIONPAN   = ''.join([chr(b) for b in [157]*2])
+    EXTRACT_MY_BEACON_DESTINATION      = ''.join([chr(b) for b in [157]*8])
+    EXTRACT_MY_BEACON_SOURCEPAN        = ''.join([chr(b) for b in [157]*2])
+    EXTRACT_MY_BEACON_SOURCE           = ''.join([chr(b) for b in [157]*2])
 
     def __init__(self, gpslog):
     
@@ -117,7 +119,7 @@ class PcapLog(object):
                             continue
                             
                         # skip our own beacons
-                        if p[21:21+19]==self.EXTRACT_MY_BEACON:
+                        if p[22:22+2]==self.EXTRACT_MY_BEACON_DESTINATIONPAN or p[24:24+8]==self.EXTRACT_MY_BEACON_DESTINATION or p[32:32+2]==self.EXTRACT_MY_BEACON_SOURCEPAN or p[34:34+2]==self.EXTRACT_MY_BEACON_SOURCE:
                             continue
                         
                         # get location
