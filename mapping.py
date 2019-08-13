@@ -56,24 +56,25 @@ with open('processed_packets.pcap', 'rb') as f:
             # read packet
             p = f.read(ph['incl_len'])
         except:
-            print "WARNING: Error while reading packet {0}".format(packetId)
             break
             
+        p = [ord(b) for b in p]
         
         # get location
-        p = [ord(b) for b in p]
-        # write location
         locationBytes = ''.join([chr(b) for b in p[11:11+8]])
-
         location = {}
         (
             location['latitude'],
             location['longitude']
         )= struct.unpack('>ff', locationBytes) 
         
+        # append new point 
         data['features'].append({
               "type": "Feature",
               "properties": { 
+              "marker-symbol": "",
+              "marker-color": "#0000ff", # RGB(HEX) red -> "#ff0000", green -> "#00ff00", blue -> "#0000ff"
+              "marker-size": "small",
               "title": str(packetId)
               },
               "geometry": {
@@ -87,5 +88,6 @@ with open('processed_packets.pcap', 'rb') as f:
         
         packetId+=1
 
-with open('packetsLocation.json', 'w') as f:  # writing JSON object#    
+# writing JSON object# 
+with open('packetsLocation.json', 'w') as f:   
     json.dump(data, f)
